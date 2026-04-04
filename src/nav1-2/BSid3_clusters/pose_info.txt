@@ -1,0 +1,140 @@
+POSE ID : 0
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 521
+TIME    : 348000.000 ps
+
+
+POSE ID : 1
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 523
+TIME    : 360000.000 ps
+
+
+POSE ID : 2
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 525
+TIME    : 838000.000 ps
+
+
+POSE ID : 3
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 523
+TIME    : 644000.000 ps
+
+
+POSE ID : 4
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 523
+TIME    : 956000.000 ps
+
+
+POSE ID : 5
+TRAJ FN : MD_01/md_skip.xtc
+PROT ID : 0
+LIPID ID: 523
+TIME    : 986000.000 ps
+
+
+POSE ID : 6
+TRAJ FN : MD_05/md_skip.xtc
+PROT ID : 0
+LIPID ID: 516
+TIME    : 772000.000 ps
+
+
+POSE ID : 7
+TRAJ FN : MD_02/md_skip.xtc
+PROT ID : 0
+LIPID ID: 524
+TIME    : 690000.000 ps
+
+
+POSE ID : 8
+TRAJ FN : MD_02/md_skip.xtc
+PROT ID : 0
+LIPID ID: 524
+TIME    : 978000.000 ps
+
+
+POSE ID : 9
+TRAJ FN : MD_03/md_skip.xtc
+PROT ID : 0
+LIPID ID: 521
+TIME    : 925000.000 ps
+
+
+POSE ID : 10
+TRAJ FN : MD_03/md_skip.xtc
+PROT ID : 0
+LIPID ID: 516
+TIME    : 850000.000 ps
+
+
+POSE ID : 11
+TRAJ FN : MD_03/md_skip.xtc
+PROT ID : 0
+LIPID ID: 524
+TIME    : 709000.000 ps
+
+
+POSE ID : 12
+TRAJ FN : MD_04/md_skip.xtc
+PROT ID : 0
+LIPID ID: 521
+TIME    : 651000.000 ps
+
+
+POSE ID : 13
+TRAJ FN : MD_04/md_skip.xtc
+PROT ID : 0
+LIPID ID: 524
+TIME    : 372000.000 ps
+
+
+POSE ID : 14
+TRAJ FN : MD_04/md_skip.xtc
+PROT ID : 0
+LIPID ID: 520
+TIME    : 518000.000 ps
+
+
+POSE ID : 15
+TRAJ FN : MD_04/md_skip.xtc
+PROT ID : 0
+LIPID ID: 520
+TIME    : 941000.000 ps
+
+
+POSE ID : 16
+TRAJ FN : MD_04/md_skip.xtc
+PROT ID : 0
+LIPID ID: 523
+TIME    : 858000.000 ps
+
+
+POSE ID : 17
+TRAJ FN : MD_05/md_skip.xtc
+PROT ID : 0
+LIPID ID: 525
+TIME    : 846000.000 ps
+
+
+POSE ID : 18
+TRAJ FN : MD_05/md_skip.xtc
+PROT ID : 0
+LIPID ID: 525
+TIME    : 403000.000 ps
+
+
+POSE ID : 19
+TRAJ FN : MD_05/md_skip.xtc
+PROT ID : 0
+LIPID ID: 517
+TIME    : 979000.000 ps
+
+
