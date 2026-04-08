@@ -1,3 +1,5 @@
+"""Compute per-residue ligand contact probabilities from a trajectory."""
+
 import sys
 import numpy as np
 import mdtraj as md
@@ -49,7 +51,7 @@ for frame in range(n_frames):
     prot_xyz = t.xyz[frame, protein_atoms, :]
     lig_xyz = t.xyz[frame, ligand_atoms, :]
 
-    # Pairwise distances between protein and ligand atoms
+    # Pairwise distances between protein and ligand atoms (broadcasted)
     dists = np.linalg.norm(
         prot_xyz[:, None, :] - lig_xyz[None, :, :],
         axis=2

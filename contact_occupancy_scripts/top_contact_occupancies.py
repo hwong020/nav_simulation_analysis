@@ -1,3 +1,5 @@
+"""Export top-N residue contact probabilities from per-trial CSVs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +13,7 @@ def export_top_contacts(
     top_n: int = 30,
 ) -> None:
     """Export top-N contact occupancy residues for each trial CSV in input_folder."""
+    # Locate all per-trial contact probability CSVs.
     csv_files = sorted(input_folder.glob("contact_probability_*.csv"))
     if not csv_files:
         raise FileNotFoundError(f"No contact_probability_*.csv found in {input_folder}")
@@ -18,6 +21,7 @@ def export_top_contacts(
     output_folder.mkdir(parents=True, exist_ok=True)
 
     for csv_path in csv_files:
+        # Read, validate, and rank each trial's probabilities.
         df = pd.read_csv(csv_path)
         required_cols = {"ResID", "Resname", "Probability"}
         if not required_cols.issubset(df.columns):
@@ -32,8 +36,9 @@ def export_top_contacts(
 
 
 def main() -> None:
-    input_folder = Path("src/nav1-3/contact_occupancies")
-    output_folder = Path("results/nav1-3/rankings")
+    """Run the export for the default channel paths."""
+    input_folder = Path("src/nav1-1/contact_occupancies")
+    output_folder = Path("results/nav1-1/rankings")
     export_top_contacts(input_folder, output_folder, top_n=30)
 
 

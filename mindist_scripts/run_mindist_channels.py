@@ -1,3 +1,5 @@
+"""Run mindist plotting for a list of channels and scenarios."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,13 +26,15 @@ def main() -> None:
         "nav1-3",
     ]
 
-    residues = ["a", "d", "e", "k"]
+    # Residues are ordered to match DEKA labels in the analysis core.
+    residues = ["d", "e", "k", "a"]
     trials = [1, 2, 3, 4, 5]
 
     for channel in channels:
         base_path = Path("src") / channel
         output_dir = Path("results") / channel / "graphs"
 
+        # Scenario name -> input directory mapping.
         scenarios = {
             "single": base_path / "single_lig_mindist",
             "multiple": base_path / "multiple_lig_mindist",
@@ -41,6 +45,7 @@ def main() -> None:
                 print(f"Skipping {channel} {scenario_name}: {scenario_path} not found")
                 continue
 
+            # Bundle scenario configuration for plotting.
             scenario = MindistScenario(
                 name=f"{channel}-{scenario_name}",
                 input_dir=scenario_path,

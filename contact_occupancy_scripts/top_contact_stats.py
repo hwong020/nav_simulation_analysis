@@ -1,3 +1,5 @@
+"""Summarize and plot top contact probabilities across trials for a channel."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 # Update these values directly when you want a different channel or folder.
-CHANNEL = "nav1-1"
+CHANNEL = "nav1-3"
 TOP_N = 15
 INPUT_FOLDER = Path("results") / CHANNEL / "rankings"
 OUTPUT_IMAGE = (
@@ -53,7 +55,16 @@ RING_RESIDUES = {
 }
 
 
+def _format_channel_name(channel: str) -> str:
+    """Normalize channel naming for plot titles."""
+    channel = channel.lower()
+    if channel.startswith("nav1-"):
+        return channel.replace("nav1-", "Nav1.")
+    return channel
+
+
 def annotate_ring(df: pd.DataFrame, channel: str) -> pd.DataFrame:
+    """Add inner/outer ring labels based on channel-specific residue sets."""
     channel_key = channel.lower()
     if channel_key not in RING_RESIDUES:
         raise ValueError(f"Unknown channel '{channel}'. Expected one of: {', '.join(RING_RESIDUES)}")
@@ -62,6 +73,7 @@ def annotate_ring(df: pd.DataFrame, channel: str) -> pd.DataFrame:
     inner = RING_RESIDUES[channel_key]["inner"]
 
     def ring_label(resid: int) -> str:
+        """Map a residue ID to its ring classification for the channel."""
         if resid in outer:
             return "Outer"
         if resid in inner:
@@ -74,12 +86,14 @@ def annotate_ring(df: pd.DataFrame, channel: str) -> pd.DataFrame:
 
 
 def load_top_contacts(input_folder: Path) -> pd.DataFrame:
+    """Load top contact CSVs and annotate each row with its trial label."""
     csv_files = sorted(input_folder.glob("top30_contact_probability_*.csv"))
     if not csv_files:
         raise FileNotFoundError(f"No top30_contact_probability_*.csv found in {input_folder}")
 
     frames = []
     for csv_path in csv_files:
+        # Ensure each file has the required columns before merging.
         df = pd.read_csv(csv_path)
         required_cols = {"ResID", "Resname", "Probability"}
         if not required_cols.issubset(df.columns):
@@ -93,6 +107,7 @@ def load_top_contacts(input_folder: Path) -> pd.DataFrame:
 
 
 def summarize_top_contacts(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    """Aggregate mean/std probabilities and return the top-N residues."""
     grouped = (
         df.groupby(["ResID", "Resname"], as_index=False)["Probability"]
         .agg(MeanProbability="mean", StdProbability="std")
@@ -106,6 +121,7 @@ def export_top_stats(
     input_folder: Path,
     top_n: int,
 ) -> pd.DataFrame:
+    """Load, summarize, and annotate top contact stats for a channel."""
     df = load_top_contacts(input_folder)
     summary = summarize_top_contacts(df, top_n)
     summary = annotate_ring(summary, channel)
@@ -113,8 +129,11 @@ def export_top_stats(
 
 
 def plot_top_contacts(summary: pd.DataFrame, output_path: Path, channel: str) -> None:
+    """Plot the top contact probabilities with ring annotations."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    channel_label = _format_channel_name(channel)
 
+    # Build labels like 'E951' and map ring classification to colors.
     label_series = summary["Resname"].astype(str) + summary["ResID"].astype(str)
     colors = summary["Ring"].map({"Outer": "#d95f02", "Inner": "#1b9e77", "None": "#757575"})
 
@@ -128,22 +147,29 @@ def plot_top_contacts(summary: pd.DataFrame, output_path: Path, channel: str) ->
     )
     ax.set_xlabel("Residue")
     ax.set_ylabel("Contact probability (mean ± std)")
-    ax.set_title(f"Top {len(summary)} contact probabilities ({channel})")
+    ax.set_title(f"Top {len(summary)} contact probabilities ({channel_label})")
     ax.tick_params(axis="x", rotation=45)
 
     legend_handles = [
-        plt.Rectangle((0, 0), 1, 1, color="#d95f02", label="Outer ring"),
-        plt.Rectangle((0, 0), 1, 1, color="#1b9e77", label="Inner ring"),
+        plt.Rectangle((0, 0), 1, 1, color="#d95f02", label="Outer Ring: EEDD"),
+        plt.Rectangle((0, 0), 1, 1, color="#1b9e77", label="Inner Ring: DEKA"),
         plt.Rectangle((0, 0), 1, 1, color="#757575", label="Other"),
     ]
-    ax.legend(handles=legend_handles, frameon=False)
+    ax.legend(
+        handles=legend_handles,
+        frameon=False,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+        borderaxespad=0.0,
+    )
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 0.82, 1])
     fig.savefig(output_path, dpi=300)
     plt.close(fig)
 
 
 def main() -> None:
+    """Entry point for generating top contact summary plots."""
     channel = CHANNEL.lower()
     summary = export_top_stats(channel, INPUT_FOLDER, TOP_N)
     plot_top_contacts(summary, OUTPUT_IMAGE, channel)

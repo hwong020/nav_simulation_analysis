@@ -1,3 +1,5 @@
+"""Configure and run PyLipID analysis for ligand interactions."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from pylipid.api import LipidInteraction
@@ -6,12 +8,21 @@ from pylipid.util import check_dir
 ##################################################################
 ##### This part needs changes according to your setting ##########
 ##################################################################
-trajfile_list = ["MD_01/md_skip.xtc", "MD_02/md_skip.xtc", "MD_03/md_skip.xtc", 
-                 "MD_04/md_skip.xtc", "MD_05/md_skip.xtc"]  # list of trajectory files to analyze.
-topfile_list = ["MD_01/init.pdb", "MD_01/init.pdb", "MD_01/init.pdb", 
-                "MD_01/init.pdb", "MD_01/init.pdb"]  # topology file is needed when trajectory format does not
-                                               # provide topology information. See mdtraj.load() for more
-                                               # information.
+trajfile_list = [
+    "MD_01/md_skip.xtc",
+    "MD_02/md_skip.xtc",
+    "MD_03/md_skip.xtc",
+    "MD_04/md_skip.xtc",
+    "MD_05/md_skip.xtc",
+]  # list of trajectory files to analyze.
+topfile_list = [
+    "MD_01/init.pdb",
+    "MD_01/init.pdb",
+    "MD_01/init.pdb",
+    "MD_01/init.pdb",
+    "MD_01/init.pdb",
+]  # topology file is needed when trajectory format does not
+   # provide topology information. See mdtraj.load() for more information.
 dt_traj = None  # the timestep of trajectories. Need to use this param when trajectories are in a format
                 # with no timestep information. Not necessary for trajectory formats of e.g. xtc, trr.
 stride = 1   # tell pylipid to analyze every stride-th frame. Can be used to save computation memory
@@ -68,6 +79,7 @@ num_cpus = None  # the number of cpu to use when functions are using multiproces
 li = LipidInteraction(trajfile_list, topfile_list=topfile_list, cutoffs=cutoffs, lipid=lipid,
                       lipid_atoms=lipid_atoms, nprot=1, resi_offset=resi_offset,
                       timeunit=timeunit, save_dir=save_dir, stride=stride, dt_traj=dt_traj)
+# Collect per-residue contact data and derive kinetics/occupancy.
 li.collect_residue_contacts()
 li.compute_residue_duration(residue_id=None)
 li.compute_residue_occupancy(residue_id=None)
@@ -81,6 +93,7 @@ if len(li.node_list) == 0:
     print("No binding site detected! Skip analysis for binding sites.")
     print("*"*50)
 else:
+    # Binding site-level analysis and pose clustering.
     li.compute_site_duration(binding_site_id=None)
     li.compute_site_occupancy(binding_site_id=None)
     li.compute_site_lipidcount(binding_site_id=None)
@@ -91,6 +104,7 @@ else:
                                                        fig_format=fig_format, num_cpus=num_cpus)
     # save pose trajectories
     if save_pose_traj:
+        # Persist trajectories for representative bound poses.
         for bs_id in pose_traj.keys():
             pose_traj[bs_id].save("{}/Bound_Poses_{}/Pose_traj_BSid{}.{}".format(li.save_dir, li.lipid, bs_id,
                                                                           save_pose_traj_format))
@@ -105,6 +119,7 @@ if pdb_file_to_map is not None:
     li.save_pymol_script(pdb_file_to_map)
 
 #### write and save data
+# Export computed datasets and figures for downstream analysis.
 for item in ["Dataset", "Duration", "Occupancy", "Lipid Count", "CorrCoef"]:
     li.save_data(item=item)
 for item in ["Residence Time", "Duration", "Occupancy", "Lipid Count"]:
@@ -115,6 +130,7 @@ for item in ["Residence Time", "Duration", "Occupancy", "Lipid Count"]:
 
 #### plot binding site comparison.
 if len(li.node_list) > 0:
+    # Compare binding site statistics across detected sites.
     for item in ["Duration BS", "Occupancy BS"]:
         li.save_data(item=item)
 
@@ -124,7 +140,7 @@ if len(li.node_list) > 0:
                        "Occupancy": "Occuoancy (100%)",
                        "Lipid Count": "Lipid Count (num.)"}
 
-        # plot No. 1
+        # plot No. 1: per-site metric values.
         binding_site_IDs = np.sort(
                  [int(bs_id) for bs_id in li.dataset["Binding Site ID"].unique() if bs_id != -1])
         for item in ["Residence Time", "Duration", "Occupancy", "Lipid Count"]:
@@ -145,7 +161,7 @@ if len(li.node_list) > 0:
                         dpi=200)
             plt.close()
 
-        # plot No. 2
+        # plot No. 2: pose RMSD per binding site.
         binding_site_IDs_RMSD = np.sort([int(bs_id) for bs_id in binding_site_IDs
                                         if f"Binding Site {bs_id}" in pose_rmsd_data.columns])
         RMSD_averages = np.array(
@@ -164,7 +180,7 @@ if len(li.node_list) > 0:
         plt.savefig("{}/{}_RMSD_v_binding_site.{}".format(li.save_dir, li.lipid, fig_format), dpi=200)
         plt.close()
 
-        # plot No. 3
+        # plot No. 3: surface area per binding site.
         surface_area_averages = np.array(
                        [surface_area_data["Binding Site {}".format(bs_id)].dropna(inplace=False).mean()
                         for bs_id in binding_site_IDs])
@@ -181,7 +197,7 @@ if len(li.node_list) > 0:
         plt.savefig("{}/{}_surface_area_v_binding_site.{}".format(li.save_dir, li.lipid, fig_format), dpi=200)
         plt.close()
 
-        # plot No. 4
+        # plot No. 4: residence time vs RMSD.
         res_time_BS = np.array(
                   [li.dataset[li.dataset["Binding Site ID"]==bs_id]["Binding Site Residence Time"].unique()[0]
                    for bs_id in binding_site_IDs_RMSD])
@@ -195,7 +211,7 @@ if len(li.node_list) > 0:
         plt.savefig("{}/{}_Residence_Time_v_RMSD.{}".format(li.save_dir, li.lipid, fig_format), dpi=200)
         plt.close()
 
-        # plot No. 5
+        # plot No. 5: residence time vs surface area.
         res_time_BS = np.array(
                   [li.dataset[li.dataset["Binding Site ID"]==bs_id]["Binding Site Residence Time"].unique()[0]
                    for bs_id in binding_site_IDs])
