@@ -21,9 +21,8 @@ def main() -> None:
     """
     # Update this list when you want to analyze additional channels.
     channels = [
-        "nav1-1",
-        "nav1-2",
-        "nav1-3",
+        "nav1-5",
+        "nav1-6",
     ]
 
     # Residues are ordered to match DEKA labels in the analysis core.

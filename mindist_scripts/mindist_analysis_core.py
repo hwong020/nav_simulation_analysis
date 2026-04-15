@@ -60,8 +60,32 @@ def _get_residue_labels(scenario_name: str, residues: list[str]) -> list[str]:
 
 
 def _load_xvg(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Load an XVG file, returning time and distance arrays."""
-    data = np.loadtxt(path, comments=["@", "#"])
+    """Load an XVG file, returning time and distance arrays.
+
+    Some XVG exports contain malformed rows with missing columns. We tolerate
+    these rows by dropping any line that does not have exactly two numeric
+    values. We also strip GROMACS-style metadata lines that start with @ or #.
+    """
+    with path.open("r", encoding="utf-8") as handle:
+        cleaned_lines = [
+            line
+            for line in handle
+            if line.strip() and not line.startswith("@") and not line.startswith("#")
+        ]
+    if not cleaned_lines:
+        raise ValueError(f"No data found in {path}")
+    data = np.genfromtxt(cleaned_lines, invalid_raise=False)
+    if data.ndim == 1:
+        data = np.atleast_2d(data)
+    if data.size == 0:
+        raise ValueError(f"No data found in {path}")
+    if data.shape[1] < 2:
+        raise ValueError(f"Expected at least two columns in {path}")
+    data = data[:, :2]
+    valid_mask = ~np.isnan(data).any(axis=1)
+    data = data[valid_mask]
+    if data.size == 0:
+        raise ValueError(f"No valid rows found in {path}")
     return data[:, 0], data[:, 1]
 
 
@@ -102,18 +126,27 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
     for trial in scenario.trials:
         fig, ax = plt.subplots(figsize=(10.5, 6))
         time_ref: np.ndarray | None = None
+        min_len: int | None = None
+        residue_series: list[tuple[int, np.ndarray, np.ndarray]] = []
         for idx, residue in enumerate(scenario.residues):
             filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
             if not filename.exists():
                 raise FileNotFoundError(f"Missing {filename}")
             time, dist = _load_xvg(filename)
-            dist_angstrom = dist * 10.0
             if time_ref is None:
                 time_ref = time
-            elif not np.array_equal(time_ref, time):
-                raise ValueError(
-                    f"Time axis mismatch for trial {trial} in {scenario.input_dir}"
-                )
+                min_len = time.shape[0]
+            else:
+                min_len = min(min_len or time.shape[0], time.shape[0])
+            residue_series.append((idx, time, dist))
+
+        if time_ref is None or min_len is None:
+            raise ValueError(f"No data loaded for {scenario.name} trial {trial}")
+
+        time_ref = time_ref[:min_len]
+        for idx, time, dist in residue_series:
+            dist = dist[:min_len]
+            dist_angstrom = dist * 10.0
 
             try:
                 residue_label = residue_labels[idx]
@@ -176,81 +209,85 @@ def _fraction_in_contact(dist_angstrom: np.ndarray, cutoff: float) -> float:
 
 
 def plot_occupancy_bars(scenario: MindistScenario) -> None:
-    """Plot H-bond occupancy fractions for all residues in a scenario."""
+    """Plot per-trial H-bond occupancy fractions for all residues."""
     scenario.output_dir.mkdir(parents=True, exist_ok=True)
 
     residues = scenario.residues
     channel_label = _format_channel_name(scenario.name)
     ligand_label = _format_ligand_label(scenario.name)
     residue_labels = _get_residue_labels(scenario.name, residues)
-    mean_fractions: list[float] = []
-    std_fractions: list[float] = []
 
-    for residue in residues:
-        # Compute per-trial fractions of frames under the H-bond cutoff.
-        time, dist_matrix = _collect_trial_series(scenario, residue)
-        dist_angstrom = dist_matrix * 10.0
-        fractions = [
-            _fraction_in_contact(dist_angstrom[trial_idx], scenario.hbond_cutoff_angstrom)
-            for trial_idx in range(dist_angstrom.shape[0])
-        ]
-        mean_fractions.append(float(np.mean(fractions)))
-        std_fractions.append(float(np.std(fractions)))
+    for trial in scenario.trials:
+        fractions: list[float] = []
+        for residue in residues:
+            filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
+            if not filename.exists():
+                raise FileNotFoundError(f"Missing {filename}")
+            _, dist = _load_xvg(filename)
+            dist_angstrom = dist * 10.0
+            fractions.append(
+                _fraction_in_contact(dist_angstrom, scenario.hbond_cutoff_angstrom)
+            )
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
-    x = np.arange(len(residues))
-    ax.bar(x, mean_fractions, yerr=std_fractions, capsize=4, color="#4c78a8", alpha=0.8)
-    ax.set_xticks(x)
-    ax.set_xticklabels(residue_labels)
-    ax.set_ylabel("Fraction of time in H-bond state")
-    ax.set_xlabel("Residue")
-    ax.set_title(f"{channel_label} ({ligand_label}) - H-bond occupancy fraction")
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    fig.tight_layout()
+        fig, ax = plt.subplots(figsize=(10, 5.5))
+        x = np.arange(len(residues))
+        ax.bar(x, fractions, capsize=4, color="#4c78a8", alpha=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(residue_labels)
+        ax.set_ylabel("Fraction of time in H-bond state")
+        ax.set_xlabel("Residue")
+        ax.set_title(
+            f"{channel_label} ({ligand_label}) - Trial {trial} H-bond occupancy"
+        )
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        fig.tight_layout()
 
-    output_path = scenario.output_dir / f"hydrogen_bond_{scenario.name}.png"
-    fig.savefig(output_path, dpi=300)
-    plt.close(fig)
+        output_path = (
+            scenario.output_dir / f"hydrogen_bond_{scenario.name}_trial{trial}.png"
+        )
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
 
 def plot_hydrophobic_bars(scenario: MindistScenario) -> None:
-    """Plot hydrophobic contact fractions for all residues in a scenario."""
+    """Plot per-trial hydrophobic contact fractions for all residues."""
     scenario.output_dir.mkdir(parents=True, exist_ok=True)
 
     residues = scenario.residues
     channel_label = _format_channel_name(scenario.name)
     ligand_label = _format_ligand_label(scenario.name)
     residue_labels = _get_residue_labels(scenario.name, residues)
-    mean_fractions: list[float] = []
-    std_fractions: list[float] = []
 
-    for residue in residues:
-        # Compute per-trial fractions of frames under the hydrophobic cutoff.
-        _, dist_matrix = _collect_trial_series(scenario, residue)
-        dist_angstrom = dist_matrix * 10.0
-        fractions = [
-            _fraction_in_contact(dist_angstrom[trial_idx], scenario.hydrophobic_cutoff_angstrom)
-            for trial_idx in range(dist_angstrom.shape[0])
-        ]
-        mean_fractions.append(float(np.mean(fractions)))
-        std_fractions.append(float(np.std(fractions)))
+    for trial in scenario.trials:
+        fractions: list[float] = []
+        for residue in residues:
+            filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
+            if not filename.exists():
+                raise FileNotFoundError(f"Missing {filename}")
+            _, dist = _load_xvg(filename)
+            dist_angstrom = dist * 10.0
+            fractions.append(
+                _fraction_in_contact(dist_angstrom, scenario.hydrophobic_cutoff_angstrom)
+            )
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
-    x = np.arange(len(residues))
-    ax.bar(x, mean_fractions, yerr=std_fractions, capsize=4, color="#f28e2b", alpha=0.8)
-    ax.set_xticks(x)
-    ax.set_xticklabels(residue_labels)
-    ax.set_ylabel("Fraction of time in hydrophobic contact")
-    ax.set_xlabel("Residue")
-    ax.set_title(
-        f"Hydrophobic occupancy fraction for DEKA filter (<{scenario.hydrophobic_cutoff_angstrom:.1f}A) for {channel_label} ({ligand_label})"
-    )
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    fig.tight_layout()
+        fig, ax = plt.subplots(figsize=(10, 5.5))
+        x = np.arange(len(residues))
+        ax.bar(x, fractions, capsize=4, color="#f28e2b", alpha=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(residue_labels)
+        ax.set_ylabel("Fraction of time in hydrophobic contact")
+        ax.set_xlabel("Residue")
+        ax.set_title(
+            f"Hydrophobic occupancy fraction (<{scenario.hydrophobic_cutoff_angstrom:.1f}A) for {channel_label} ({ligand_label}) - Trial {trial}"
+        )
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        fig.tight_layout()
 
-    output_path = scenario.output_dir / f"hydrophobic_{scenario.name}.png"
-    fig.savefig(output_path, dpi=300)
-    plt.close(fig)
+        output_path = (
+            scenario.output_dir / f"hydrophobic_{scenario.name}_trial{trial}.png"
+        )
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
 
 def run_scenario(scenario: MindistScenario) -> None:
