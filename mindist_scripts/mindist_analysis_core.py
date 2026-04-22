@@ -7,6 +7,23 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
+
+TITLE_FONT_SIZE = 12
+AXIS_LABEL_FONT_SIZE = 11
+TICK_LABEL_FONT_SIZE = 9
+LEGEND_FONT_SIZE = 6
+
+FIGURE_SIZE = (3.2, 2.8)
+TRACE_LINE_WIDTH = 0.6
+TRACE_ALPHA = 0.5
+CUTOFF_LINE_WIDTH = 1.2
+CUTOFF_LINE_ALPHA = 0.95
+Y_PADDING_FRACTION = 0.08
+MIN_Y_PADDING = 0.5
+GRID_LINE_WIDTH = 0.45
+GRID_ALPHA = 0.18
 
 
 @dataclass(frozen=True)
@@ -40,17 +57,12 @@ def _format_channel_name(scenario_name: str) -> str:
     base = scenario_name.split("-")[0:2]
     if len(base) == 2 and base[0].lower() == "nav1":
         return f"Nav1.{base[1]}"
-    return scenario_name
+    return scenario_name.replace("nav1-", "Nav1.")
 
 
-def _format_ligand_label(scenario_name: str) -> str:
-    """Return a short ligand-count label based on the scenario name."""
-    scenario_key = scenario_name.split("-", 2)[-1].lower()
-    if "multiple" in scenario_key:
-        return "10 TTX"
-    if "single" in scenario_key:
-        return "1 TTX"
-    return scenario_key
+def _format_time_ns(time_ps: np.ndarray) -> np.ndarray:
+    """Convert GROMACS time values from ps to ns for plotting."""
+    return time_ps / 1000.0
 
 
 def _get_residue_labels(scenario_name: str, residues: list[str]) -> list[str]:
@@ -117,17 +129,17 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
     """Plot per-trial time series overlays for all residues in a scenario."""
     scenario.output_dir.mkdir(parents=True, exist_ok=True)
     channel_label = _format_channel_name(scenario.name)
-    ligand_label = _format_ligand_label(scenario.name)
     residue_labels = _get_residue_labels(scenario.name, scenario.residues)
 
     colors = ["#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b", "#e377c2"]
-    scenario_suffix = scenario.name.split("-", 2)[-1]
 
     for trial in scenario.trials:
-        fig, ax = plt.subplots(figsize=(10.5, 6))
+        fig, ax = plt.subplots(figsize=FIGURE_SIZE)
         time_ref: np.ndarray | None = None
         min_len: int | None = None
         residue_series: list[tuple[int, np.ndarray, np.ndarray]] = []
+        plotted_distances: list[np.ndarray] = []
+
         for idx, residue in enumerate(scenario.residues):
             filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
             if not filename.exists():
@@ -143,10 +155,11 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
         if time_ref is None or min_len is None:
             raise ValueError(f"No data loaded for {scenario.name} trial {trial}")
 
-        time_ref = time_ref[:min_len]
         for idx, time, dist in residue_series:
+            time = _format_time_ns(time[:min_len])
             dist = dist[:min_len]
             dist_angstrom = dist * 10.0
+            plotted_distances.append(dist_angstrom)
 
             try:
                 residue_label = residue_labels[idx]
@@ -157,41 +170,66 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
                 time,
                 dist_angstrom,
                 color=color,
-                linewidth=2.0,
+                linewidth=TRACE_LINE_WIDTH,
+                alpha=TRACE_ALPHA,
                 label=residue_label,
             )
 
         ax.axhline(
-            scenario.hbond_cutoff_angstrom,
-            color="#d62728",
-            linestyle="--",
-            linewidth=2.2,
-            alpha=0.9,
-            zorder=5,
-            label=f"H-bond cutoff ({scenario.hbond_cutoff_angstrom:.1f} Å)",
-        )
-        ax.axhline(
             scenario.hydrophobic_cutoff_angstrom,
             color="#000000",
             linestyle=":",
-            linewidth=2.0,
-            alpha=0.9,
+            linewidth=CUTOFF_LINE_WIDTH,
+            alpha=CUTOFF_LINE_ALPHA,
             zorder=4,
-            label=f"Hydrophobic cutoff ({scenario.hydrophobic_cutoff_angstrom:.1f} Å)",
+            label=f"Contact ({scenario.hydrophobic_cutoff_angstrom:.1f} Å)",
         )
-        ax.set_title(
-            f"{channel_label} ({ligand_label}): Trial {trial} Minimum Distance of DEKA residues"
-        )
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Distance (Å)")
-        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_xlabel("Time (ns)", fontsize=AXIS_LABEL_FONT_SIZE, labelpad=4)
+        ax.set_ylabel("Distance (Å)", fontsize=AXIS_LABEL_FONT_SIZE, labelpad=4)
+        ax.set_xlim(0, 1000)
+        ax.set_xticks(np.arange(0, 1001, 200))
+        if plotted_distances:
+            all_distances = np.concatenate(plotted_distances)
+            y_min = float(np.min(all_distances))
+            y_max = float(np.max(all_distances))
+            y_span = max(y_max - y_min, 1e-6)
+            y_padding = max(y_span * Y_PADDING_FRACTION, MIN_Y_PADDING)
+            ax.set_ylim(max(0.0, y_min - y_padding), y_max + y_padding)
+        ax.grid(True, linestyle="-", linewidth=GRID_LINE_WIDTH, alpha=GRID_ALPHA, color="#b3b3b3")
+        ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, pad=2, width=0.8, length=3)
+        ax.ticklabel_format(style="plain", axis="x", useOffset=False)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=7))
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.8)
+            spine.set_color("#666666")
+        ax.xaxis.label.set_fontweight("bold")
+        ax.yaxis.label.set_fontweight("bold")
         ax.legend(
-            ncol=1,
-            loc="center left",
-            bbox_to_anchor=(1.02, 0.5),
-            frameon=False,
+            ncol=3,
+            loc="upper right",
+            bbox_to_anchor=(0.995, 0.995),
+            frameon=True,
+            facecolor="white",
+            edgecolor="#666666",
+            framealpha=0.95,
+            borderpad=0.3,
+            borderaxespad=0.0,
+            handlelength=1.4,
+            handletextpad=0.35,
+            fancybox=False,
+            columnspacing=0.7,
+            fontsize=LEGEND_FONT_SIZE,
         )
-        fig.tight_layout(rect=(0, 0, 0.82, 1))
+        fig.suptitle(
+            f"{channel_label}",
+            fontsize=TITLE_FONT_SIZE,
+            fontweight="bold",
+            x=0.5,
+            y=0.965,
+        )
+        for tick_label in ax.get_xticklabels() + ax.get_yticklabels():
+            tick_label.set_fontweight("bold")
+        fig.tight_layout(rect=(0.01, 0.01, 1, 0.985), pad=0.2)
 
         output_path = (
             scenario.output_dir
@@ -201,97 +239,6 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
         plt.close(fig)
 
 
-def _fraction_in_contact(dist_angstrom: np.ndarray, cutoff: float) -> float:
-    """Return fraction of distances within cutoff, guarding empty arrays."""
-    if dist_angstrom.size == 0:
-        return float("nan")
-    return float(np.sum(dist_angstrom <= cutoff) / dist_angstrom.size)
-
-
-def plot_occupancy_bars(scenario: MindistScenario) -> None:
-    """Plot per-trial H-bond occupancy fractions for all residues."""
-    scenario.output_dir.mkdir(parents=True, exist_ok=True)
-
-    residues = scenario.residues
-    channel_label = _format_channel_name(scenario.name)
-    ligand_label = _format_ligand_label(scenario.name)
-    residue_labels = _get_residue_labels(scenario.name, residues)
-
-    for trial in scenario.trials:
-        fractions: list[float] = []
-        for residue in residues:
-            filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
-            if not filename.exists():
-                raise FileNotFoundError(f"Missing {filename}")
-            _, dist = _load_xvg(filename)
-            dist_angstrom = dist * 10.0
-            fractions.append(
-                _fraction_in_contact(dist_angstrom, scenario.hbond_cutoff_angstrom)
-            )
-
-        fig, ax = plt.subplots(figsize=(10, 5.5))
-        x = np.arange(len(residues))
-        ax.bar(x, fractions, capsize=4, color="#4c78a8", alpha=0.8)
-        ax.set_xticks(x)
-        ax.set_xticklabels(residue_labels)
-        ax.set_ylabel("Fraction of time in H-bond state")
-        ax.set_xlabel("Residue")
-        ax.set_title(
-            f"{channel_label} ({ligand_label}) - Trial {trial} H-bond occupancy"
-        )
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-        fig.tight_layout()
-
-        output_path = (
-            scenario.output_dir / f"hydrogen_bond_{scenario.name}_trial{trial}.png"
-        )
-        fig.savefig(output_path, dpi=300)
-        plt.close(fig)
-
-
-def plot_hydrophobic_bars(scenario: MindistScenario) -> None:
-    """Plot per-trial hydrophobic contact fractions for all residues."""
-    scenario.output_dir.mkdir(parents=True, exist_ok=True)
-
-    residues = scenario.residues
-    channel_label = _format_channel_name(scenario.name)
-    ligand_label = _format_ligand_label(scenario.name)
-    residue_labels = _get_residue_labels(scenario.name, residues)
-
-    for trial in scenario.trials:
-        fractions: list[float] = []
-        for residue in residues:
-            filename = scenario.input_dir / f"mindist_{residue}_{trial}.xvg"
-            if not filename.exists():
-                raise FileNotFoundError(f"Missing {filename}")
-            _, dist = _load_xvg(filename)
-            dist_angstrom = dist * 10.0
-            fractions.append(
-                _fraction_in_contact(dist_angstrom, scenario.hydrophobic_cutoff_angstrom)
-            )
-
-        fig, ax = plt.subplots(figsize=(10, 5.5))
-        x = np.arange(len(residues))
-        ax.bar(x, fractions, capsize=4, color="#f28e2b", alpha=0.8)
-        ax.set_xticks(x)
-        ax.set_xticklabels(residue_labels)
-        ax.set_ylabel("Fraction of time in hydrophobic contact")
-        ax.set_xlabel("Residue")
-        ax.set_title(
-            f"Hydrophobic occupancy fraction (<{scenario.hydrophobic_cutoff_angstrom:.1f}A) for {channel_label} ({ligand_label}) - Trial {trial}"
-        )
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-        fig.tight_layout()
-
-        output_path = (
-            scenario.output_dir / f"hydrophobic_{scenario.name}_trial{trial}.png"
-        )
-        fig.savefig(output_path, dpi=300)
-        plt.close(fig)
-
-
 def run_scenario(scenario: MindistScenario) -> None:
     """Run all plots for a scenario and write outputs to disk."""
     plot_trial_time_series_overlay(scenario)
-    plot_occupancy_bars(scenario)
-    plot_hydrophobic_bars(scenario)
