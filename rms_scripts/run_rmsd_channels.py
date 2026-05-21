@@ -10,8 +10,8 @@ import numpy as np
 
 FIGURE_SIZE = (3.8, 3.0)
 TITLE_FONT_SIZE = 16
-AXIS_LABEL_FONT_SIZE = 13
-TICK_LABEL_FONT_SIZE = 10
+AXIS_LABEL_FONT_SIZE = 14
+TICK_LABEL_FONT_SIZE = 14
 
 RAW_ALPHA = 0.14
 RAW_LINE_WIDTH = 0.7
@@ -26,6 +26,33 @@ TRIAL_COLORS = [
     "#dc2626",
     "#6b7280",
 ]
+
+CHANNEL_Y_SETTINGS: dict[str, tuple[float, list[float]]] = {
+    "nav1-1": (15.0, [2.5, 5.0, 7.5, 10.0, 12.5, 15.0]),
+    "nav1-2": (20.0, [4.0, 8.0, 12.0, 16.0, 20.0]),
+    "nav1-3": (15.0, [2.5, 5.0, 7.5, 10.0, 12.5, 15.0]),
+    "nav1-5": (60.0, [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]),
+}
+
+
+def nice_step(value: float) -> float:
+    """Round a positive value up to a clean 1/2/5×10^n step."""
+    if value <= 0:
+        return 1.0
+
+    exponent = np.floor(np.log10(value))
+    fraction = value / (10 ** exponent)
+
+    if fraction <= 1:
+        nice_fraction = 1
+    elif fraction <= 2:
+        nice_fraction = 2
+    elif fraction <= 5:
+        nice_fraction = 5
+    else:
+        nice_fraction = 10
+
+    return float(nice_fraction * (10 ** exponent))
 
 
 def load_xvg(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -75,27 +102,26 @@ def running_average(values: np.ndarray, window: int = RUNNING_WINDOW) -> np.ndar
 def style_axes(ax: plt.Axes) -> None:
     """Apply compact template-like styling."""
     ax.set_xlabel("Time (ns)", fontsize=AXIS_LABEL_FONT_SIZE)
-    ax.set_ylabel("RMSD (Å)", fontsize=AXIS_LABEL_FONT_SIZE, labelpad=10)
+    ax.set_ylabel(
+        "RMSD of TTX Inside \nBinding Position (Å)",
+        fontsize=AXIS_LABEL_FONT_SIZE,
+        labelpad=4,
+    )
     ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, width=1.0, length=3)
-    for tick in ax.get_xticklabels() + ax.get_yticklabels():
-        tick.set_fontweight("bold")
+    ax.ticklabel_format(style="plain", axis="both", useOffset=False)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_linewidth(1.2)
     ax.spines["bottom"].set_linewidth(1.2)
-    ax.xaxis.label.set_fontweight("bold")
-    ax.yaxis.label.set_fontweight("bold")
     ax.minorticks_on()
 
 
 def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     """Plot raw RMSD traces and running averages for one channel."""
     rmsd_dir = channel_dir / "rmsd"
-    trial_paths = [rmsd_dir / f"rmsd_lig_{trial}.xvg" for trial in range(1, 6)]
-    missing = [path.name for path in trial_paths if not path.exists()]
-    if missing:
-        missing_names = ", ".join(missing)
-        raise FileNotFoundError(f"Missing RMSD files in {rmsd_dir}: {missing_names}")
+    trial_paths = sorted(rmsd_dir.glob("rmsd_lig_*.xvg"))
+    if not trial_paths:
+        raise FileNotFoundError(f"No RMSD files found in {rmsd_dir}")
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE)
     all_series: list[np.ndarray] = []
@@ -114,13 +140,23 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
 
     channel_name = channel_dir.name.replace("nav1-", "Nav1.")
 
-    max_time = max(float(np.max(times)) for times in all_times)
-    max_rmsd = max(float(np.max(series)) for series in all_series)
-    ax.set_xlim(0, max_time)
-    ax.set_ylim(0, max(1.5, max_rmsd * 1.05))
+    ax.set_xlim(0, 1000)
+    ax.set_xticks([0, 250, 500, 750, 1000])
+
+    if channel_dir.name in CHANNEL_Y_SETTINGS:
+        y_max, y_ticks = CHANNEL_Y_SETTINGS[channel_dir.name]
+        ax.set_ylim(0, y_max)
+        ax.set_yticks(y_ticks)
+    else:
+        max_rmsd = max(float(np.max(series)) for series in all_series)
+        target_y_max = max_rmsd * 1.15
+        y_step = nice_step(target_y_max / 5.0)
+        y_max = y_step * 5.0
+        ax.set_ylim(0, y_max)
+        ax.set_yticks(np.arange(0.0, y_max + (y_step * 0.5), y_step))
     style_axes(ax)
-    fig.suptitle(channel_name, fontsize=TITLE_FONT_SIZE, fontweight="bold", x=0.55, y=0.96)
-    fig.tight_layout(rect=(0.02, 0.01, 1, 0.985), pad=0.2)
+    fig.suptitle(channel_name, fontsize=TITLE_FONT_SIZE, x=0.6, y=0.96)
+    fig.tight_layout(rect=(0.055, 0.025, 1, 0.985), pad=0.2)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_dir / f"rmsd_{channel_dir.name}_running_avg.png", dpi=300)

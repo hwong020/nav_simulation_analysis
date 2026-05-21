@@ -10,20 +10,23 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 
-TITLE_FONT_SIZE = 12
-AXIS_LABEL_FONT_SIZE = 11
-TICK_LABEL_FONT_SIZE = 9
-LEGEND_FONT_SIZE = 6
+TITLE_FONT_SIZE = 16
+AXIS_LABEL_FONT_SIZE = 12.5
+TICK_LABEL_FONT_SIZE = 11.5
+LEGEND_FONT_SIZE = 12.5
 
-FIGURE_SIZE = (3.2, 2.8)
-TRACE_LINE_WIDTH = 0.6
-TRACE_ALPHA = 0.5
+FIGURE_SIZE = (5, 3.9)
+TRACE_LINE_WIDTH = 0.8
+TRACE_ALPHA = 0.4
+RUNNING_AVG_LINE_WIDTH = 1.05
+RUNNING_AVG_ALPHA = 0.95
+RUNNING_WINDOW = 101
 CUTOFF_LINE_WIDTH = 1.2
 CUTOFF_LINE_ALPHA = 0.95
 Y_PADDING_FRACTION = 0.08
 MIN_Y_PADDING = 0.5
 GRID_LINE_WIDTH = 0.45
-GRID_ALPHA = 0.18
+GRID_ALPHA = 0.4
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,22 @@ def _collect_trial_series(
     return time0, np.vstack(dists)
 
 
+def _running_average(values: np.ndarray, window: int = RUNNING_WINDOW) -> np.ndarray:
+    """Return a centered running average with an odd window size."""
+    if values.size < 3:
+        return values
+
+    window = min(window, values.size)
+    if window % 2 == 0:
+        window -= 1
+    if window < 3:
+        return values
+
+    kernel = np.ones(window, dtype=float) / window
+    padded = np.pad(values, (window // 2, window // 2), mode="edge")
+    return np.convolve(padded, kernel, mode="valid")
+
+
 def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
     """Plot per-trial time series overlays for all residues in a scenario."""
     scenario.output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,6 +154,7 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
 
     for trial in scenario.trials:
         fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+        ax.set_box_aspect(1)
         time_ref: np.ndarray | None = None
         min_len: int | None = None
         residue_series: list[tuple[int, np.ndarray, np.ndarray]] = []
@@ -174,6 +194,13 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
                 alpha=TRACE_ALPHA,
                 label=residue_label,
             )
+            ax.plot(
+                time,
+                _running_average(dist_angstrom),
+                color=color,
+                linewidth=RUNNING_AVG_LINE_WIDTH,
+                alpha=RUNNING_AVG_ALPHA,
+            )
 
         ax.axhline(
             scenario.hydrophobic_cutoff_angstrom,
@@ -185,9 +212,13 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
             label=f"Contact ({scenario.hydrophobic_cutoff_angstrom:.1f} Å)",
         )
         ax.set_xlabel("Time (ns)", fontsize=AXIS_LABEL_FONT_SIZE, labelpad=4)
-        ax.set_ylabel("Distance (Å)", fontsize=AXIS_LABEL_FONT_SIZE, labelpad=4)
+        ax.set_ylabel(
+            "Distance between Specified \nResidue and TTX (Å)",
+            fontsize=AXIS_LABEL_FONT_SIZE,
+            labelpad=4,
+        )
         ax.set_xlim(0, 1000)
-        ax.set_xticks(np.arange(0, 1001, 200))
+        ax.set_xticks([0, 250, 500, 750, 1000])
         if plotted_distances:
             all_distances = np.concatenate(plotted_distances)
             y_min = float(np.min(all_distances))
@@ -199,43 +230,33 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
         ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, pad=2, width=0.8, length=3)
         ax.ticklabel_format(style="plain", axis="x", useOffset=False)
         ax.yaxis.set_major_locator(MaxNLocator(nbins=7))
-        for spine in ax.spines.values():
-            spine.set_linewidth(0.8)
-            spine.set_color("#666666")
-        ax.xaxis.label.set_fontweight("bold")
-        ax.yaxis.label.set_fontweight("bold")
-        ax.legend(
-            ncol=3,
-            loc="upper right",
-            bbox_to_anchor=(0.995, 0.995),
-            frameon=True,
-            facecolor="white",
-            edgecolor="#666666",
-            framealpha=0.95,
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_linewidth(1.2)
+        ax.spines["bottom"].set_linewidth(1.2)
+        legend = ax.legend(
+            ncol=1,
+            loc="center left",
+            bbox_to_anchor=(1.02, 0.5),
+            frameon=False,
             borderpad=0.3,
             borderaxespad=0.0,
             handlelength=1.4,
             handletextpad=0.35,
-            fancybox=False,
             columnspacing=0.7,
             fontsize=LEGEND_FONT_SIZE,
         )
-        fig.suptitle(
-            f"{channel_label}",
-            fontsize=TITLE_FONT_SIZE,
-            fontweight="bold",
-            x=0.5,
-            y=0.965,
-        )
-        for tick_label in ax.get_xticklabels() + ax.get_yticklabels():
-            tick_label.set_fontweight("bold")
-        fig.tight_layout(rect=(0.01, 0.01, 1, 0.985), pad=0.2)
+        for handle in legend.legend_handles:
+            handle.set_alpha(1.0)
+            handle.set_linewidth(max(2.0, TRACE_LINE_WIDTH))
+        ax.set_title(channel_label, fontsize=TITLE_FONT_SIZE, pad=8)
+        fig.tight_layout(rect=(0.08, 0.06, 0.84, 0.96), pad=0.04)
 
         output_path = (
             scenario.output_dir
             / f"mindist_{scenario.name}_trial{trial}_DEKA.png"
         )
-        fig.savefig(output_path, dpi=300)
+        fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.0)
         plt.close(fig)
 
 
