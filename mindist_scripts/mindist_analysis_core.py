@@ -226,7 +226,6 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
             y_span = max(y_max - y_min, 1e-6)
             y_padding = max(y_span * Y_PADDING_FRACTION, MIN_Y_PADDING)
             ax.set_ylim(max(0.0, y_min - y_padding), y_max + y_padding)
-        ax.grid(True, linestyle="-", linewidth=GRID_LINE_WIDTH, alpha=GRID_ALPHA, color="#b3b3b3")
         ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, pad=2, width=0.8, length=3)
         ax.ticklabel_format(style="plain", axis="x", useOffset=False)
         ax.yaxis.set_major_locator(MaxNLocator(nbins=7))

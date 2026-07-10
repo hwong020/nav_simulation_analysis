@@ -124,7 +124,7 @@ def export_top_contacts_per_trial(channel: str) -> list[Path]:
     exported_paths: list[Path] = []
     for trial_label, df in trial_tables:
         ranked = df.sort_values("Probability", ascending=False).head(TOP_CSV_N).copy()
-        ranked["Rank"] = np.arange(1, len(ranked) + 1) * 1.1
+        ranked["Rank"] = np.arange(1, len(ranked) + 1)
         ranked["Residue"] = [
             f"{resname}{int(resid)}"
             for resname, resid in zip(ranked["Resname"], ranked["ResID"], strict=False)
@@ -242,18 +242,31 @@ def plot_top_contacts(channel: str) -> Path:
     fig, ax = plt.subplots(figsize=FIGURE_SIZE)
     x = np.arange(len(summary)) * 0.86
     colors = [_bar_color(category) for category in summary["category"]]
+    mean_percent = summary["mean_probability"] * 100.0
+    std_percent = summary["std_probability"] * 100.0
+    yerr = np.vstack([np.minimum(std_percent, mean_percent), std_percent])
 
-    ax.bar(
+    bar_container = ax.bar(
         x,
-        summary["mean_probability"] * 100.0,
-        yerr=summary["std_probability"] * 100.0,
+        mean_percent,
+        yerr=yerr,
         color=colors,
         edgecolor="#000000",
-        linewidth=0.2,
+        linewidth=0.9,
         width=0.52,
-        capsize=5,
-        error_kw={"ecolor": "#000000", "elinewidth": 0.4, "capthick": 0.4},
+        capsize=6,
+        error_kw={"ecolor": "#000000", "elinewidth": 1.0, "capthick": 1.0},
     )
+    if bar_container.errorbar is not None:
+        errorbar_lines = bar_container.errorbar.lines
+        for artist in errorbar_lines:
+            if artist is None:
+                continue
+            if isinstance(artist, (list, tuple)):
+                for sub_artist in artist:
+                    sub_artist.set_clip_on(False)
+            else:
+                artist.set_clip_on(False)
 
     ax.set_title(
         f"{_format_channel_name(channel)}",
@@ -270,14 +283,7 @@ def plot_top_contacts(channel: str) -> Path:
     ax.set_xticklabels(summary["label"], rotation=90, ha="center", va="top")
     ax.tick_params(axis="x", labelsize=X_TICK_FONT_SIZE, pad=1.0, width=0.8, length=3)
     ax.tick_params(axis="y", labelsize=Y_TICK_FONT_SIZE, pad=2, width=0.8, length=3)
-    ax.set_ylim(bottom=0)
-    ax.grid(
-        axis="y",
-        linestyle="-",
-        linewidth=GRID_LINE_WIDTH,
-        alpha=GRID_ALPHA,
-        color="#b3b3b3",
-    )
+    ax.set_ylim(0, 100)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -308,8 +314,8 @@ def plot_top_contacts(channel: str) -> Path:
     output_dir = RESULTS_ROOT / channel / "rankings"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "top8_contact_probability_mean_std.png"
-    fig.tight_layout(rect=(0.01, 0.1, 0.83, 0.97), pad=0.08)
-    fig.savefig(output_path, dpi=300)
+    fig.tight_layout(rect=(0.01, 0.08, 0.83, 0.98), pad=0.02)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.01)
     plt.close(fig)
     return output_path
 
