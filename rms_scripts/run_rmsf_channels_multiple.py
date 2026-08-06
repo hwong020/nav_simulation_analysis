@@ -64,9 +64,9 @@ def _label_map_for_channel(channel_key: str) -> dict[int, str]:
     return mapping
 
 CHANNEL_YMAX = {
-    "nav1-1": 6.0,
+    "nav1-1": 8.0,
     "nav1-2": 2.5,
-    "nav1-3": 5.0,
+    "nav1-3": 8.0,
     "nav1-5": 12.5,
 }
 
@@ -272,7 +272,7 @@ def set_domain_boundary_ticks(ax: plt.Axes, channel_key: str, segments: list[dic
 
 def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     """Create discrete top-8 RMSF plot (trial points + mean±SD) for one channel."""
-    residues, trial_values = collect_trials(channel_dir / "rmsf")
+    residues, trial_values = collect_trials(channel_dir / "rmsf_multiple_lig")
     channel_name = channel_dir.name.replace("nav1-", "Nav1.")
     top_res = TOP8_CONTACT_RESIDUES.get(channel_dir.name)
     if not top_res:
@@ -331,12 +331,12 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     )
 
     style_axes(ax)
-    ax.set_title(channel_name, fontsize=TITLE_FONT_SIZE, pad=10)
+    ax.set_title(f"{channel_name} (Pre-bound)", fontsize=TITLE_FONT_SIZE, pad=10)
     fig.tight_layout(rect=(0.005, 0.1, 0.84, 0.965), pad=0.05)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(
-        output_dir / f"rmsf_{channel_dir.name}_mean_sd.png",
+        output_dir / f"rmsf_{channel_dir.name}_multiple_lig_mean_sd.png",
         dpi=300,
         bbox_inches="tight",
         pad_inches=0.01,
@@ -350,9 +350,9 @@ def main() -> None:
     results_root = Path("results")
 
     for channel_dir in sorted(src_root.glob("nav1-*")):
-        rmsf_dir = channel_dir / "rmsf"
+        rmsf_dir = channel_dir / "rmsf_multiple_lig"
         if not rmsf_dir.exists():
-            print(f"Skipping {channel_dir.name}: no rmsf directory")
+            print(f"Skipping {channel_dir.name}: no rmsf_multiple_lig directory")
             continue
 
         try:
