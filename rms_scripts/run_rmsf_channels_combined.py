@@ -1,4 +1,4 @@
-"""Generate grouped Pre vs Post-Bound RMSF bar charts per Nav channel."""
+"""Generate grouped Flooding vs Single Ligand RMSF bar charts per Nav channel."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-FIGURE_SIZE = (7.2, 4.8)
+FIGURE_SIZE = (7.2, 5.0)
 TITLE_FONT_SIZE = 16
 AXIS_LABEL_FONT_SIZE = 16
 TICK_LABEL_FONT_SIZE = 16
@@ -20,8 +20,9 @@ RESIDUE_GROUP_SPACING = 1.15
 BAR_WIDTH = 0.32
 
 # Same shades used in the previous RMSF scripts.
-PRE_BOUND_COLOR = "#fde68a"   # yellow
-POST_BOUND_COLOR = "#59a14f"  # green
+FLOODING_COLOR = "#fde68a"       # yellow
+SINGLE_LIGAND_COLOR = "#59a14f"  # green
+CHANNELS_WITHOUT_FLOODING = {"nav1-5"}
 
 TOP8_CONTACT_RESIDUES = {
     "nav1-1": [328, 329, 383, 385, 386, 954, 1412, 1436],
@@ -138,50 +139,67 @@ def mean_and_std_for_residues(
 
 
 def plot_channel(channel_dir: Path, output_dir: Path) -> None:
-    """Create one grouped Pre vs Post-Bound RMSF bar chart for a channel."""
-    pre_residues, pre_trial_values = collect_trials(channel_dir / "rmsf_multiple_lig")
-    post_residues, post_trial_values = collect_trials(channel_dir / "rmsf_single_lig")
+    """Create one grouped Flooding vs Single Ligand RMSF bar chart for a channel."""
+    include_flooding = channel_dir.name not in CHANNELS_WITHOUT_FLOODING
+    flooding_residues = None
+    flooding_trial_values = None
+    if include_flooding:
+        flooding_residues, flooding_trial_values = collect_trials(channel_dir / "rmsf_multiple_lig")
+    single_ligand_residues, single_ligand_trial_values = collect_trials(channel_dir / "rmsf_single_lig")
 
-    if not np.array_equal(pre_residues, post_residues):
-        raise ValueError(f"Residue axis mismatch between pre/post RMSF data for {channel_dir.name}")
+    if include_flooding and not np.array_equal(flooding_residues, single_ligand_residues):
+        raise ValueError(f"Residue axis mismatch between flooding/single ligand RMSF data for {channel_dir.name}")
 
     top_res = TOP8_CONTACT_RESIDUES.get(channel_dir.name)
     if not top_res:
         raise ValueError(f"No top-8 residue mapping provided for {channel_dir.name}")
 
-    residue_to_idx = {int(res): i for i, res in enumerate(pre_residues)}
+    residue_to_idx = {int(res): i for i, res in enumerate(single_ligand_residues)}
     chosen = sorted(res for res in top_res if res in residue_to_idx)
     if not chosen:
         raise ValueError(f"None of top-8 residues found in RMSF axis for {channel_dir.name}")
 
-    pre_means, pre_stds = mean_and_std_for_residues(pre_residues, pre_trial_values, chosen)
-    post_means, post_stds = mean_and_std_for_residues(post_residues, post_trial_values, chosen)
+    single_ligand_means, single_ligand_stds = mean_and_std_for_residues(
+        single_ligand_residues,
+        single_ligand_trial_values,
+        chosen,
+    )
+    if include_flooding:
+        flooding_means, flooding_stds = mean_and_std_for_residues(
+            flooding_residues,
+            flooding_trial_values,
+            chosen,
+        )
 
     x = np.arange(len(chosen), dtype=float) * RESIDUE_GROUP_SPACING
     fig, ax = plt.subplots(figsize=FIGURE_SIZE)
     error_kw = {"elinewidth": 1.4, "capsize": 3, "capthick": 1.4, "ecolor": "#111827"}
 
+    single_ligand_x = x
+    if include_flooding:
+        ax.bar(
+            x - BAR_WIDTH / 2,
+            flooding_means,
+            width=BAR_WIDTH,
+            yerr=flooding_stds,
+            color=FLOODING_COLOR,
+            edgecolor="#111827",
+            linewidth=0.8,
+            label="Flooding (First 500 ns)",
+            error_kw=error_kw,
+            zorder=3,
+        )
+        single_ligand_x = x + BAR_WIDTH / 2
+
     ax.bar(
-        x - BAR_WIDTH / 2,
-        pre_means,
+        single_ligand_x,
+        single_ligand_means,
         width=BAR_WIDTH,
-        yerr=pre_stds,
-        color=PRE_BOUND_COLOR,
+        yerr=single_ligand_stds,
+        color=SINGLE_LIGAND_COLOR,
         edgecolor="#111827",
         linewidth=0.8,
-        label="Pre-bound",
-        error_kw=error_kw,
-        zorder=3,
-    )
-    ax.bar(
-        x + BAR_WIDTH / 2,
-        post_means,
-        width=BAR_WIDTH,
-        yerr=post_stds,
-        color=POST_BOUND_COLOR,
-        edgecolor="#111827",
-        linewidth=0.8,
-        label="Post-bound",
+        label="Single Ligand",
         error_kw=error_kw,
         zorder=3,
     )
@@ -199,7 +217,8 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     ax.set_ylim(0, Y_AXIS_MAX)
 
     channel_name = channel_dir.name.replace("nav1-", "Nav1.")
-    ax.set_title(f"{channel_name} (Pre vs Post-Bound)", fontsize=TITLE_FONT_SIZE, pad=10)
+    title_suffix = "Flooding (First 500 ns) vs Single Ligand" if include_flooding else "Single Ligand"
+    ax.set_title(f"{channel_name}: {title_suffix}", fontsize=TITLE_FONT_SIZE, pad=10)
     ax.legend(
         loc="upper right",
         bbox_to_anchor=(0.98, 0.92),
@@ -212,7 +231,7 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(
-        output_dir / f"rmsf_{channel_dir.name}_pre_vs_post_bound_bar_mean_sd.png",
+        output_dir / f"rmsf_{channel_dir.name}_flooding_vs_single_ligand_bar_mean_sd.png",
         dpi=300,
         bbox_inches="tight",
         pad_inches=0.01,
@@ -221,7 +240,7 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
 
 
 def main() -> None:
-    """Run combined Pre vs Post-Bound RMSF bar plotting for mapped Nav channels."""
+    """Run combined Flooding vs Single Ligand RMSF bar plotting for mapped Nav channels."""
     src_root = Path("src")
     results_root = Path("results")
 
@@ -230,7 +249,7 @@ def main() -> None:
         if not channel_dir.exists():
             print(f"Skipping {channel_key}: no channel directory")
             continue
-        if not (channel_dir / "rmsf_multiple_lig").exists():
+        if channel_key not in CHANNELS_WITHOUT_FLOODING and not (channel_dir / "rmsf_multiple_lig").exists():
             print(f"Skipping {channel_key}: no rmsf_multiple_lig directory")
             continue
         if not (channel_dir / "rmsf_single_lig").exists():

@@ -23,6 +23,7 @@ X_TICK_LABEL_FONT_SIZE = 12
 
 MEAN_COLOR = "#0f766e"
 SHADE_COLOR = "#5eead4"
+SKIP_FLOODING_CHANNELS = {"nav1-5"}
 
 DOMAIN_POINT_COLORS = {
     "DI": "#4e79a7",
@@ -331,7 +332,7 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     )
 
     style_axes(ax)
-    ax.set_title(f"{channel_name} (Pre-bound)", fontsize=TITLE_FONT_SIZE, pad=10)
+    ax.set_title(f"{channel_name}: Flooding (First 500 ns)", fontsize=TITLE_FONT_SIZE, pad=10)
     fig.tight_layout(rect=(0.005, 0.1, 0.84, 0.965), pad=0.05)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -350,6 +351,10 @@ def main() -> None:
     results_root = Path("results")
 
     for channel_dir in sorted(src_root.glob("nav1-*")):
+        if channel_dir.name in SKIP_FLOODING_CHANNELS:
+            print(f"Skipping {channel_dir.name}: flooding RMSF excluded")
+            continue
+
         rmsf_dir = channel_dir / "rmsf_multiple_lig"
         if not rmsf_dir.exists():
             print(f"Skipping {channel_dir.name}: no rmsf_multiple_lig directory")

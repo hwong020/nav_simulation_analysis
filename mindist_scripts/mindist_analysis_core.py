@@ -10,12 +10,16 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 
-TITLE_FONT_SIZE = 16
-AXIS_LABEL_FONT_SIZE = 12.5
-TICK_LABEL_FONT_SIZE = 11.5
-LEGEND_FONT_SIZE = 12.5
+TITLE_FONT_SIZE = 18
+AXIS_LABEL_FONT_SIZE = 18
+TICK_LABEL_FONT_SIZE = 18
+LEGEND_FONT_SIZE = 16
 
-FIGURE_SIZE = (5, 3.9)
+FIGURE_SIZE = (7.15, 4.45)
+PLOT_LEFT_INCHES = 1.20
+PLOT_BOTTOM_INCHES = 0.75
+PLOT_SIZE_INCHES = 3.15
+TITLE_GAP_INCHES = 0.08
 TRACE_LINE_WIDTH = 0.8
 TRACE_ALPHA = 0.4
 RUNNING_AVG_LINE_WIDTH = 1.05
@@ -27,6 +31,24 @@ Y_PADDING_FRACTION = 0.08
 MIN_Y_PADDING = 0.5
 GRID_LINE_WIDTH = 0.45
 GRID_ALPHA = 0.4
+Y_AXIS_CEILINGS_BY_LIGAND_MODE = {
+    "multiple_lig": 36.0,
+    "single_lig": 48.0,
+}
+
+
+def add_centered_plot_title(fig: plt.Figure, title: str) -> None:
+    """Place title at a fixed physical offset above the square plotting box."""
+    title_x = (PLOT_LEFT_INCHES + (PLOT_SIZE_INCHES / 2.0)) / FIGURE_SIZE[0]
+    title_y = (PLOT_BOTTOM_INCHES + PLOT_SIZE_INCHES + TITLE_GAP_INCHES) / FIGURE_SIZE[1]
+    fig.text(
+        title_x,
+        title_y,
+        title,
+        ha="center",
+        va="bottom",
+        fontsize=TITLE_FONT_SIZE,
+    )
 
 
 @dataclass(frozen=True)
@@ -72,6 +94,16 @@ def _get_residue_labels(scenario_name: str, residues: list[str]) -> list[str]:
     """Return DEKA labels for known channels or default to residue codes."""
     key = "-".join(scenario_name.split("-")[0:2]).lower()
     return DEKA_LABELS.get(key, [res.upper() for res in residues])
+
+
+def _get_y_axis_ceiling(scenario: MindistScenario) -> float | None:
+    """Return a fixed y-axis ceiling for known ligand-count scenarios."""
+    scenario_text = f"{scenario.name} {scenario.input_dir.name}".lower()
+    for ligand_mode, ceiling in Y_AXIS_CEILINGS_BY_LIGAND_MODE.items():
+        shorthand = ligand_mode.replace("_lig", "")
+        if ligand_mode in scenario_text or f"-{shorthand}" in scenario_text:
+            return ceiling
+    return None
 
 
 def _load_xvg(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -219,14 +251,21 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
         )
         ax.set_xlim(0, 1000)
         ax.set_xticks([0, 250, 500, 750, 1000])
+        y_axis_ceiling = _get_y_axis_ceiling(scenario)
         if plotted_distances:
             all_distances = np.concatenate(plotted_distances)
             y_min = float(np.min(all_distances))
             y_max = float(np.max(all_distances))
             y_span = max(y_max - y_min, 1e-6)
             y_padding = max(y_span * Y_PADDING_FRACTION, MIN_Y_PADDING)
-            ax.set_ylim(max(0.0, y_min - y_padding), y_max + y_padding)
-        ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, pad=2, width=0.8, length=3)
+            y_axis_floor = max(0.0, y_min - y_padding)
+            if y_axis_ceiling is not None:
+                ax.set_ylim(y_axis_floor, y_axis_ceiling)
+            else:
+                ax.set_ylim(y_axis_floor, y_max + y_padding)
+        elif y_axis_ceiling is not None:
+            ax.set_ylim(0.0, y_axis_ceiling)
+        ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE, width=1.0, length=3)
         ax.ticklabel_format(style="plain", axis="x", useOffset=False)
         ax.yaxis.set_major_locator(MaxNLocator(nbins=7))
         ax.spines["top"].set_visible(False)
@@ -248,14 +287,19 @@ def plot_trial_time_series_overlay(scenario: MindistScenario) -> None:
         for handle in legend.legend_handles:
             handle.set_alpha(1.0)
             handle.set_linewidth(max(2.0, TRACE_LINE_WIDTH))
-        ax.set_title(channel_label, fontsize=TITLE_FONT_SIZE, pad=8)
-        fig.tight_layout(rect=(0.08, 0.06, 0.84, 0.96), pad=0.04)
+        add_centered_plot_title(fig, channel_label)
+        fig.subplots_adjust(
+            left=PLOT_LEFT_INCHES / FIGURE_SIZE[0],
+            bottom=PLOT_BOTTOM_INCHES / FIGURE_SIZE[1],
+            right=(PLOT_LEFT_INCHES + PLOT_SIZE_INCHES) / FIGURE_SIZE[0],
+            top=(PLOT_BOTTOM_INCHES + PLOT_SIZE_INCHES) / FIGURE_SIZE[1],
+        )
 
         output_path = (
             scenario.output_dir
             / f"mindist_{scenario.name}_trial{trial}_DEKA.png"
         )
-        fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.0)
+        fig.savefig(output_path, dpi=300)
         plt.close(fig)
 
 

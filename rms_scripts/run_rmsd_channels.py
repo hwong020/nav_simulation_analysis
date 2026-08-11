@@ -8,10 +8,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-FIGURE_SIZE = (3.8, 3.0)
-TITLE_FONT_SIZE = 16
-AXIS_LABEL_FONT_SIZE = 14
-TICK_LABEL_FONT_SIZE = 14
+FIGURE_SIZE = (5.75, 4.45)
+PLOT_LEFT_INCHES = 1.20
+PLOT_BOTTOM_INCHES = 0.75
+PLOT_SIZE_INCHES = 3.15
+TITLE_GAP_INCHES = 0.08
+TITLE_FONT_SIZE = 18
+AXIS_LABEL_FONT_SIZE = 18
+TICK_LABEL_FONT_SIZE = 18
+RMSD_Y_MAX = 60.0
+RMSD_Y_TICKS = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
 
 RAW_ALPHA = 0.14
 RAW_LINE_WIDTH = 0.7
@@ -27,13 +33,19 @@ TRIAL_COLORS = [
     "#6b7280",
 ]
 
-CHANNEL_Y_SETTINGS: dict[str, tuple[float, list[float]]] = {
-    "nav1-1": (15.0, [2.5, 5.0, 7.5, 10.0, 12.5, 15.0]),
-    "nav1-2": (20.0, [4.0, 8.0, 12.0, 16.0, 20.0]),
-    "nav1-3": (15.0, [2.5, 5.0, 7.5, 10.0, 12.5, 15.0]),
-    "nav1-5": (60.0, [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]),
-}
 
+def add_centered_plot_title(fig: plt.Figure, title: str) -> None:
+    """Place title at a fixed physical offset above the square plotting box."""
+    title_x = (PLOT_LEFT_INCHES + (PLOT_SIZE_INCHES / 2.0)) / FIGURE_SIZE[0]
+    title_y = (PLOT_BOTTOM_INCHES + PLOT_SIZE_INCHES + TITLE_GAP_INCHES) / FIGURE_SIZE[1]
+    fig.text(
+        title_x,
+        title_y,
+        title,
+        ha="center",
+        va="bottom",
+        fontsize=TITLE_FONT_SIZE,
+    )
 
 def nice_step(value: float) -> float:
     """Round a positive value up to a clean 1/2/5×10^n step."""
@@ -124,6 +136,7 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
         raise FileNotFoundError(f"No RMSD files found in {rmsd_dir}")
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+    ax.set_box_aspect(1)
     all_series: list[np.ndarray] = []
     all_times: list[np.ndarray] = []
 
@@ -143,20 +156,16 @@ def plot_channel(channel_dir: Path, output_dir: Path) -> None:
     ax.set_xlim(0, 1000)
     ax.set_xticks([0, 250, 500, 750, 1000])
 
-    if channel_dir.name in CHANNEL_Y_SETTINGS:
-        y_max, y_ticks = CHANNEL_Y_SETTINGS[channel_dir.name]
-        ax.set_ylim(0, y_max)
-        ax.set_yticks(y_ticks)
-    else:
-        max_rmsd = max(float(np.max(series)) for series in all_series)
-        target_y_max = max_rmsd * 1.15
-        y_step = nice_step(target_y_max / 5.0)
-        y_max = y_step * 5.0
-        ax.set_ylim(0, y_max)
-        ax.set_yticks(np.arange(0.0, y_max + (y_step * 0.5), y_step))
+    ax.set_ylim(0, RMSD_Y_MAX)
+    ax.set_yticks(RMSD_Y_TICKS)
     style_axes(ax)
-    fig.suptitle(channel_name, fontsize=TITLE_FONT_SIZE, x=0.6, y=0.96)
-    fig.tight_layout(rect=(0.055, 0.025, 1, 0.985), pad=0.2)
+    add_centered_plot_title(fig, channel_name)
+    fig.subplots_adjust(
+        left=PLOT_LEFT_INCHES / FIGURE_SIZE[0],
+        bottom=PLOT_BOTTOM_INCHES / FIGURE_SIZE[1],
+        right=(PLOT_LEFT_INCHES + PLOT_SIZE_INCHES) / FIGURE_SIZE[0],
+        top=(PLOT_BOTTOM_INCHES + PLOT_SIZE_INCHES) / FIGURE_SIZE[1],
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_dir / f"rmsd_{channel_dir.name}_running_avg.png", dpi=300)
